@@ -21,6 +21,7 @@ import numpy as np
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).resolve().parent
 
@@ -237,6 +238,7 @@ def _run_regression(points_json: str, params_json: str, result_queue: mp.Queue):
 # ---------------------------------------------------------------------------
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
