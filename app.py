@@ -90,8 +90,54 @@ def _run_regression(points_json: str, result_queue: mp.Queue):
         reg.fit(X, y)
 
         model = reg.model_
-        expr_str = reg.get_model_string(model, 6)
+        expr_str = reg.get_model_string(model, 3)
         x_dense = np.linspace(x_min, x_max, 300)
+
+        # --- helpers: scientific formatting --------------------------------
+        def _sci_fmt(val, decimals=3):
+            """Format a float in scientific notation with `decimals` places."""
+            if val == 0:
+                return "0"
+            abs_val = abs(val)
+            exp = int(np.floor(np.log10(abs_val)))
+            if -2 <= exp <= 2:
+                return f"{val:.{decimals}f}"
+            mantissa = val / 10 ** exp
+            return f"{mantissa:.{decimals}f}e{exp}"
+
+        def _sci_latex_fmt(val, decimals=3):
+            """Format a float as LaTeX scientific notation."""
+            if val == 0:
+                return "0"
+            abs_val = abs(val)
+            sign = "-" if val < 0 else ""
+            exp = int(np.floor(np.log10(abs_val)))
+            if -2 <= exp <= 2:
+                return f"{val:.{decimals}f}"
+            mantissa = abs_val / 10 ** exp
+            return sign + f"{mantissa:.{decimals}f}" + r" \times 10^{" + str(exp) + "}"
+
+        def _round_and_sci(expr):
+            """Round all Float atoms and return (display_str, latex_str)."""
+            # Collect and replace float atoms with rounded values
+            for atom in list(expr.atoms(sy.Number)):
+                if isinstance(atom, sy.Float):
+                    expr = expr.subs(atom, sy.Float(float(atom), 4))
+            # Build display string with scientific notation
+            d = str(expr)
+            for atom in sorted(expr.atoms(sy.Number),
+                               key=lambda a: -len(str(a))):
+                if isinstance(atom, sy.Float):
+                    val = float(atom)
+                    d = d.replace(str(atom), _sci_fmt(val))
+            # Build LaTeX string with scientific notation
+            l = sy.latex(expr)
+            for atom in sorted(expr.atoms(sy.Number),
+                               key=lambda a: -len(sy.latex(a))):
+                if isinstance(atom, sy.Float):
+                    val = float(atom)
+                    l = l.replace(sy.latex(atom), _sci_latex_fmt(val))
+            return d, l
 
         # --- helper: parse, simplify, get latex and curve ------------------
         def _process_tree(tree_str, precision_label=False):
@@ -99,8 +145,7 @@ def _run_regression(points_json: str, result_queue: mp.Queue):
             try:
                 parsed = sy.parse_expr(tree_str.lower())
                 simplified = sy.simplify(parsed)
-                d = str(simplified)
-                l = sy.latex(simplified)
+                d, l = _round_and_sci(simplified)
                 # evaluate curve via lambdify
                 x_sym = sy.Symbol('x0') if 'x0' in tree_str.lower() else (
                     sy.Symbol('x_0') if 'x_0' in tree_str.lower() else
@@ -140,7 +185,7 @@ def _run_regression(points_json: str, result_queue: mp.Queue):
             obj = s["objective_values"]
             tree = s["tree"]
             mdl = s["minimum_description_length"]
-            tree_str = reg.get_model_string(tree, 6)
+            tree_str = reg.get_model_string(tree, 3)
             p_display, p_latex, p_curve = _process_tree(tree_str)
             is_best = (p_display == display_str)
             if is_best:
