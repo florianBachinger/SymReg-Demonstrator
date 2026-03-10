@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Symbolic Regression – Draw to Fit</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#1e1e2e; font-family: 'Segoe UI', system-ui, sans-serif; }
+  canvas { display:block; cursor:crosshair; touch-action:none; }
+  #overlay {
+    position:fixed; top:12px; left:50%; transform:translateX(-50%);
+    background:rgba(30,30,46,0.88); color:#cdd6f4; padding:10px 24px;
+    border-radius:10px; font-size:15px; z-index:10;
+    border:1px solid #45475a; backdrop-filter:blur(6px);
+    max-width:90vw; text-align:center; line-height:1.5;
+    pointer-events:none;
+  }
+  #overlay .expr { color:#a6e3a1; font-size:22px; font-weight:600; }
+  #overlay .expr .katex { font-size:22px; }
+  #overlay .status { color:#f9e2af; font-size:13px; }
+  #overlay .hint { color:#7f849c; font-size:12px; }
+  #pareto-panel {
+    position:fixed; bottom:12px; left:50%; transform:translateX(-50%);
+    background:rgba(30,30,46,0.88); color:#cdd6f4; padding:8px 16px;
+    border-radius:10px; font-size:12px; z-index:10;
+    border:1px solid #45475a; backdrop-filter:blur(6px);
+    max-width:90vw; max-height:30vh; overflow-y:auto;
+    pointer-events:auto; display:none;
+    font-family:'Fira Code','Cascadia Code',monospace;
+  }
+  #pareto-panel table { border-collapse:collapse; width:100%; }
+  #pareto-panel th { color:#89b4fa; text-align:left; padding:4px 10px; border-bottom:1px solid #45475a; }
+  #pareto-panel td { padding:4px 10px; }
+  #pareto-panel tr.pareto-row { cursor:pointer; transition:background 0.15s; }
+  #pareto-panel tr.pareto-row:hover { background:rgba(137,180,250,0.12); }
+  #pareto-panel tr.pareto-row.selected { background:rgba(166,227,161,0.18); color:#a6e3a1; }
+  #pareto-panel tr.pareto-row.best-row td:first-child::before { content:'★ '; color:#f9e2af; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay"><span class="hint">Draw a curve to fit</span></div>
+<div id="pareto-panel"></div>
+<script>
+"use strict";
+
+// --- Canvas & coordinate setup -------------------------------------------
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const overlay = document.getElementById("overlay");
+const paretoPanel = document.getElementById("pareto-panel");
+
+// Math coordinate range
+const XMIN = -10, XMAX = 10, YMIN = -10, YMAX = 10;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  redraw();
+}
+window.addEventListener("resize", resize);
+
+function mathToCanvas(mx, my) {
+  const cx = (mx - XMIN) / (XMAX - XMIN) * canvas.width;
+  const cy = (1 - (my - YMIN) / (YMAX - YMIN)) * canvas.height;
+  return [cx, cy];
+}
+
+function canvasToMath(cx, cy) {
+  const mx = XMIN + cx / canvas.width * (XMAX - XMIN);
+  const my = YMIN + (1 - cy / canvas.height) * (YMAX - YMIN);
+  return [mx, my];
+}
+
+// --- State ---------------------------------------------------------------
+let drawnPoints = [];      // math coords collected during current stroke
+let drawnCanvasPath = [];  // canvas coords for redraw
+let fittedCurve = null;    // [[mx, my], ...] from server
+let expression = null;
+let isDrawing = false;
+let computing = false;
+let paretoData = [];       // full pareto front data from server
+let selectedParetoIdx = -1;
+
+// --- Grid drawing --------------------------------------------------------
+function drawGrid() {
+  const w = canvas.width, h = canvas.height;
+
+  // background
+  ctx.fillStyle = "#1e1e2e";
+  ctx.fillRect(0, 0, w, h);
+
+  // minor gridlines (every 1 unit)
+  ctx.strokeStyle = "#313244";
+  ctx.lineWidth = 0.5;
+  for (let x = Math.ceil(XMIN); x <= XMAX; x++) {
+    const [cx] = mathToCanvas(x, 0);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+  }
+  for (let y = Math.ceil(YMIN); y <= YMAX; y++) {
+    const [, cy] = mathToCanvas(0, y);
+    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  }
+
+  // major gridlines (every 5 units)
+  ctx.strokeStyle = "#45475a";
+  ctx.lineWidth = 1;
+  for (let x = Math.ceil(XMIN / 5) * 5; x <= XMAX; x += 5) {
+    const [cx] = mathToCanvas(x, 0);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+  }
+  for (let y = Math.ceil(YMIN / 5) * 5; y <= YMAX; y += 5) {
+    const [, cy] = mathToCanvas(0, y);
+    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  }
+
+  // axes
+  ctx.strokeStyle = "#585b70";
+  ctx.lineWidth = 1.5;
+  const [ax] = mathToCanvas(0, 0);
+  const [, ay] = mathToCanvas(0, 0);
+  ctx.beginPath(); ctx.moveTo(ax, 0); ctx.lineTo(ax, h); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, ay); ctx.lineTo(w, ay); ctx.stroke();
+
+  // tick labels
+  ctx.fillStyle = "#7f849c";
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let x = Math.ceil(XMIN); x <= XMAX; x++) {
+    if (x === 0) continue;
+    const [cx] = mathToCanvas(x, 0);
+    ctx.fillText(x, cx, ay + 4);
+  }
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let y = Math.ceil(YMIN); y <= YMAX; y++) {
+    if (y === 0) continue;
+    const [, cy] = mathToCanvas(0, y);
+    ctx.fillText(y, ax - 6, cy);
+  }
+}
+
+// --- Drawing strokes & fitted curve --------------------------------------
+function drawUserCurve() {
+  if (drawnCanvasPath.length < 2) return;
+  ctx.strokeStyle = "#cdd6f4";
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(drawnCanvasPath[0][0], drawnCanvasPath[0][1]);
+  for (let i = 1; i < drawnCanvasPath.length; i++) {
+    ctx.lineTo(drawnCanvasPath[i][0], drawnCanvasPath[i][1]);
+  }
+  ctx.stroke();
+}
+
+function drawFittedCurve() {
+  if (!fittedCurve || fittedCurve.length < 2) return;
+  ctx.strokeStyle = "#f38ba8";
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  let started = false;
+  for (const [mx, my] of fittedCurve) {
+    if (my < YMIN - 5 || my > YMAX + 5) { started = false; continue; } // clip
+    const [cx, cy] = mathToCanvas(mx, my);
+    if (!started) { ctx.moveTo(cx, cy); started = true; }
+    else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+}
+
+function redraw() {
+  drawGrid();
+  drawUserCurve();
+  drawFittedCurve();
+}
+
+// --- Pointer events (mouse + pen) ----------------------------------------
+canvas.addEventListener("pointerdown", (e) => {
+  isDrawing = true;
+  canvas.setPointerCapture(e.pointerId);
+
+  // cancel previous run
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "cancel" }));
+  }
+
+  // clear previous drawing & result
+  drawnPoints = [];
+  drawnCanvasPath = [];
+  fittedCurve = null;
+  expression = null;
+  computing = false;
+  paretoPanel.style.display = "none";
+
+  const [mx, my] = canvasToMath(e.offsetX, e.offsetY);
+  drawnPoints.push([mx, my]);
+  drawnCanvasPath.push([e.offsetX, e.offsetY]);
+
+  redraw();
+  overlay.innerHTML = '<span class="hint">Drawing...</span>';
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!isDrawing) return;
+  const [mx, my] = canvasToMath(e.offsetX, e.offsetY);
+  drawnPoints.push([mx, my]);
+  drawnCanvasPath.push([e.offsetX, e.offsetY]);
+
+  // incremental draw for responsiveness
+  const len = drawnCanvasPath.length;
+  if (len >= 2) {
+    ctx.strokeStyle = "#cdd6f4";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(drawnCanvasPath[len-2][0], drawnCanvasPath[len-2][1]);
+    ctx.lineTo(drawnCanvasPath[len-1][0], drawnCanvasPath[len-1][1]);
+    ctx.stroke();
+  }
+});
+
+canvas.addEventListener("pointerup", (e) => {
+  if (!isDrawing) return;
+  isDrawing = false;
+
+  if (drawnPoints.length < 5) {
+    overlay.innerHTML = '<span class="hint">Draw a longer curve</span>';
+    return;
+  }
+
+  // send points to server
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "fit", points: drawnPoints }));
+    computing = true;
+    overlay.innerHTML = '<span class="status">Computing symbolic regression…</span>';
+  } else {
+    overlay.innerHTML = '<span class="status" style="color:#f38ba8">Disconnected – reload page</span>';
+  }
+});
+
+// prevent context menu on right-click
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// --- LaTeX rendering & Pareto interaction --------------------------------
+function renderExpressionOverlay(latex) {
+  overlay.innerHTML = '<span class="expr" id="katex-target"></span>';
+  const el = document.getElementById("katex-target");
+  // wait for KaTeX to load if needed
+  function tryRender() {
+    if (typeof katex !== "undefined") {
+      try { katex.render(latex, el, { throwOnError: false, displayMode: false }); }
+      catch(e) { el.textContent = latex; }
+    } else {
+      setTimeout(tryRender, 100);
+    }
+  }
+  tryRender();
+}
+
+function buildParetoTable() {
+  let html = '<table><tr><th>R²</th><th>Len</th><th>MDL</th><th>Expression</th></tr>';
+  for (let i = 0; i < paretoData.length; i++) {
+    const p = paretoData[i];
+    const sel = (i === selectedParetoIdx) ? " selected" : "";
+    const best = (i === selectedParetoIdx) ? " best-row" : "";
+    html += `<tr class="pareto-row${sel}${best}" data-idx="${i}">`;
+    html += `<td>${p.r2}</td><td>${p.length}</td><td>${p.mdl}</td>`;
+    html += `<td id="pareto-expr-${i}"></td></tr>`;
+  }
+  html += '</table>';
+  paretoPanel.innerHTML = html;
+
+  // render LaTeX in each cell
+  for (let i = 0; i < paretoData.length; i++) {
+    const el = document.getElementById(`pareto-expr-${i}`);
+    if (el && typeof katex !== "undefined") {
+      try { katex.render(paretoData[i].latex || paretoData[i].expr, el, { throwOnError: false, displayMode: false }); }
+      catch(e) { el.textContent = paretoData[i].expr; }
+    } else if (el) {
+      el.textContent = paretoData[i].expr;
+    }
+  }
+
+  // click handlers
+  paretoPanel.querySelectorAll(".pareto-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = parseInt(row.dataset.idx);
+      selectParetoSolution(idx);
+    });
+  });
+}
+
+function selectParetoSolution(idx) {
+  if (idx < 0 || idx >= paretoData.length) return;
+  selectedParetoIdx = idx;
+  const p = paretoData[idx];
+
+  // update curve
+  if (p.curve && p.curve.length > 0) {
+    fittedCurve = p.curve;
+  }
+
+  // update expression overlay
+  renderExpressionOverlay(p.latex || p.expr);
+  redraw();
+
+  // update selection highlighting
+  paretoPanel.querySelectorAll(".pareto-row").forEach((row, i) => {
+    row.classList.toggle("selected", i === idx);
+  });
+}
+
+// --- WebSocket -----------------------------------------------------------
+let ws;
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    overlay.innerHTML = '<span class="hint">Draw a curve to fit</span>';
+  };
+
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.type === "result") {
+      computing = false;
+      expression = msg.expression;
+      fittedCurve = msg.curve;
+      paretoData = msg.pareto || [];
+      selectedParetoIdx = msg.bestIdx != null ? msg.bestIdx : -1;
+
+      // render LaTeX expression in overlay
+      renderExpressionOverlay(msg.latex || msg.expression);
+      redraw();
+
+      // show pareto front
+      if (paretoData.length > 0) {
+        buildParetoTable();
+        paretoPanel.style.display = "block";
+      }
+    } else if (msg.type === "error") {
+      computing = false;
+      overlay.innerHTML = `<span class="status" style="color:#f38ba8">${escapeHtml(msg.message)}</span>`;
+    }
+  };
+
+  ws.onclose = () => {
+    overlay.innerHTML = '<span class="status" style="color:#f38ba8">Disconnected – reconnecting…</span>';
+    setTimeout(connectWS, 2000);
+  };
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+connectWS();
+resize();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+numpy
+pyoperon
+sympy
+fastapi
+uvicorn[standard]
+websockets
+
+# project dependencies:
