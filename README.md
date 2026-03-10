@@ -2,7 +2,18 @@
 
 Interactive symbolic regression demo — draw a curve and get a fitted mathematical expression via [PyOperon](https://github.com/heal-research/pyoperon).
 
+## Demo
+
+![Demo](documentation/demo.gif)
+
 ## Usage
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+Then open `http://localhost:8765` in your browser.
 
 ## Usage - VSCode
 
