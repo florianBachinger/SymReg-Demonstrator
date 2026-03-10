@@ -191,7 +191,7 @@ def _run_regression(points_json: str, result_queue: mp.Queue):
             if is_best:
                 best_idx = i
             pareto.append({
-                "r2": round(float(obj[0]), 6),
+                "r2": (-1) * round(float(obj[0]), 6),
                 "length": int(obj[1]),
                 "mdl": round(float(mdl), 4),
                 "expr": p_display,
