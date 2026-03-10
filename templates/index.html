@@ -208,11 +208,11 @@
     <div class="settings-section-title">Allowed Symbols</div>
     <div class="param-row">
       <div class="param-label">
-        <span>Select function primitives</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Choose which mathematical operations the GP algorithm can use to build expressions. More symbols = more expressive but slower search. <b>constant</b> and <b>variable</b> are always required.</span>
         </span>
+        <span>Select function primitives</span>
       </div>
       <div id="symbol-chips-container"></div>
     </div>
@@ -224,33 +224,33 @@
 
     <div class="param-row">
       <div class="param-label">
-        <span>generations</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Number of evolutionary generations. <b>Higher</b> = more time to evolve better solutions but slower. <b>Lower</b> = faster but may find simpler/worse fits. Typical range: 10–100.</span>
         </span>
+        <span>generations</span>
       </div>
       <input class="param-input" type="number" id="p-generations" value="30" min="1" max="1000" step="1">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>population_size</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Number of candidate solutions in each generation. <b>Higher</b> = more diversity, better exploration, but more memory and time. <b>Lower</b> = faster iterations but risk premature convergence. Typical: 100–1000.</span>
         </span>
+        <span>population_size</span>
       </div>
       <input class="param-input" type="number" id="p-population_size" value="200" min="10" max="10000" step="10">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>max_length</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Maximum tree length (number of nodes) for candidate expressions. <b>Higher</b> = allows more complex expressions. <b>Lower</b> = forces simpler, more interpretable models. Typical: 10–50.</span>
         </span>
+        <span>max_length</span>
       </div>
       <input class="param-input" type="number" id="p-max_length" value="20" min="3" max="200" step="1">
     </div>
@@ -262,44 +262,44 @@
 
     <div class="param-row">
       <div class="param-label">
-        <span>mutation_probability</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Probability of mutating an individual each generation (0–1). <b>Higher</b> = more exploration, can escape local optima. <b>Lower</b> = more exploitation of good solutions. Typical: 0.05–0.3.</span>
         </span>
+        <span>mutation_probability</span>
       </div>
       <input class="param-input" type="number" id="p-mutation_probability" value="0.15" min="0" max="1" step="0.01">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>tournament_size</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Number of individuals competing in tournament selection. <b>Higher</b> = stronger selection pressure, favors best individuals. <b>Lower</b> = weaker pressure, more diversity. Typical: 2–7.</span>
         </span>
+        <span>tournament_size</span>
       </div>
       <input class="param-input" type="number" id="p-tournament_size" value="3" min="2" max="20" step="1">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>optimizer_iterations</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Number of local optimization iterations (gradient-based) applied to each individual's constants. <b>Higher</b> = better-tuned coefficients but slower. <b>Lower</b> = faster but coefficients may be rough. Typical: 5–50.</span>
         </span>
+        <span>optimizer_iterations</span>
       </div>
       <input class="param-input" type="number" id="p-optimizer_iterations" value="10" min="0" max="100" step="1">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>max_evaluations</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Maximum number of fitness evaluations before stopping. Acts as a computational budget. <b>Higher</b> = more thorough search. <b>Lower</b> = strict time limit. Set to 0 for unlimited. Typical: 10,000–1,000,000.</span>
         </span>
+        <span>max_evaluations</span>
       </div>
       <input class="param-input" type="number" id="p-max_evaluations" value="100000" min="0" max="10000000" step="1000">
     </div>
@@ -311,11 +311,11 @@
 
     <div class="param-row">
       <div class="param-label">
-        <span>model_selection_criterion</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Criterion used to select the best model balancing fit quality vs. complexity. <b>MDL</b> = minimum description length (Occam's razor). <b>BIC/AIC</b> = Bayesian/Akaike information criterion. MDL tends to prefer simpler models.</span>
         </span>
+        <span>model_selection_criterion</span>
       </div>
       <select class="param-input" id="p-model_selection_criterion">
         <option value="minimum_description_length" selected>minimum_description_length</option>
@@ -326,11 +326,11 @@
 
     <div class="param-row">
       <div class="param-label">
-        <span>optimizer</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Local optimization method for tuning constants. <b>lm</b> = Levenberg-Marquardt (fast, good for nonlinear least squares). Generally leave as default.</span>
         </span>
+        <span>optimizer</span>
       </div>
       <select class="param-input" id="p-optimizer">
         <option value="lm" selected>lm (Levenberg-Marquardt)</option>
@@ -339,55 +339,55 @@
 
     <div class="param-row">
       <div class="param-label">
-        <span>pool_size</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Size of the offspring pool generated each generation. Usually set equal to population_size. <b>Higher</b> = more offspring to evaluate. Typical: same as population_size.</span>
         </span>
+        <span>pool_size</span>
       </div>
       <input class="param-input" type="number" id="p-pool_size" value="200" min="10" max="10000" step="10">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>epsilon</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Convergence threshold for the optimizer. Smaller values allow finer optimization but may take longer. Typical: 1e-3 to 1e-6.</span>
         </span>
+        <span>epsilon</span>
       </div>
       <input class="param-input" type="number" id="p-epsilon" value="0.00001" min="0" max="1" step="0.000001">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>random_state</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Seed for the random number generator. Set a number for reproducible results. Leave blank for random initialization each run.</span>
         </span>
+        <span>random_state</span>
       </div>
       <input class="param-input" type="number" id="p-random_state" placeholder="None (random)" min="0" step="1">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>uncertainty</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Assumed measurement uncertainty of the data. Used in model selection criteria. <b>Higher</b> = more tolerance for imprecise fits, favors simpler models. Typical: 0.01–0.1.</span>
         </span>
+        <span>uncertainty</span>
       </div>
       <input class="param-input" type="number" id="p-uncertainty" value="0.05" min="0" max="10" step="0.01">
     </div>
 
     <div class="param-row">
       <div class="param-label">
-        <span>n_threads</span>
         <span class="tooltip-wrap">
           <button class="info-btn" type="button">i</button>
           <span class="tooltip-text">Number of threads for parallel evaluation. <b>0</b> = auto-detect (use all cores). Set to 1 for single-threaded execution. Higher values speed up large populations.</span>
         </span>
+        <span>n_threads</span>
       </div>
       <input class="param-input" type="number" id="p-n_threads" value="0" min="0" max="128" step="1">
     </div>
