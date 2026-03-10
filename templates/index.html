@@ -171,12 +171,23 @@
   .ctrl-btn.resume-btn:hover { background:rgba(166,227,161,0.15); }
   .ctrl-btn.stop-btn { border-color:#f38ba8; color:#f38ba8; }
   .ctrl-btn.stop-btn:hover { background:rgba(243,139,168,0.15); }
+
+  /* --- Runtime display (top-right) --- */
+  #runtime-display {
+    position:fixed; top:12px; right:12px; z-index:10;
+    background:rgba(30,30,46,0.88); color:#7f849c; padding:6px 14px;
+    border-radius:10px; font-size:12px;
+    border:1px solid #45475a; backdrop-filter:blur(6px);
+    font-family:'Fira Code','Cascadia Code',monospace;
+    display:none; pointer-events:none;
+  }
 </style>
 </head>
 <body>
 
 <canvas id="c"></canvas>
 <div id="overlay"><span class="hint">Draw a curve to fit</span></div>
+<div id="runtime-display"></div>
 <div id="pareto-panel"></div>
 
 <!-- Burger menu button -->
@@ -428,6 +439,8 @@ let drawnPoints     = [];
 let drawnCanvasPath = [];
 let fittedCurve     = null;
 let expression      = null;
+let computeStartTime = null;
+const runtimeDisplay = document.getElementById("runtime-display");
 let isDrawing       = false;
 let paretoData      = [];
 let selectedParetoIdx = -1;
@@ -687,6 +700,7 @@ canvas.addEventListener("pointerdown", (e) => {
   computeState = "idle";
   updateControlButtons();
   paretoPanel.style.display = "none";
+  runtimeDisplay.style.display = "none";
 
   const [mx, my] = canvasToMath(e.offsetX, e.offsetY);
   drawnPoints.push([mx, my]);
@@ -725,6 +739,8 @@ canvas.addEventListener("pointerup", (e) => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "fit", points: drawnPoints, params: gatherParams() }));
     computeState = "running";
+    computeStartTime = performance.now();
+    runtimeDisplay.style.display = "none";
     updateControlButtons();
     overlay.innerHTML = '<span class="status">Computing symbolic regression\u2026</span>';
   } else {
@@ -805,6 +821,12 @@ function connectWS() {
     if (msg.type === "result") {
       computeState = "idle";
       updateControlButtons();
+      if (computeStartTime !== null) {
+        var elapsed = ((performance.now() - computeStartTime) / 1000).toFixed(3);
+        runtimeDisplay.textContent = elapsed + " s";
+        runtimeDisplay.style.display = "block";
+        computeStartTime = null;
+      }
       expression = msg.expression;
       fittedCurve = msg.curve;
       paretoData = msg.pareto || [];
