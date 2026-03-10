@@ -12,6 +12,7 @@ Open: http://localhost:8766/
 import asyncio
 import json
 import multiprocessing as mp
+import os
 import signal
 import sys
 from pathlib import Path
@@ -27,7 +28,38 @@ HERE = Path(__file__).resolve().parent
 # Regression subprocess
 # ---------------------------------------------------------------------------
 
-def _run_regression(points_json: str, result_queue: mp.Queue):
+# Default GP parameters (server-side source of truth)
+DEFAULT_PARAMS = {
+    "allowed_symbols": "add,sub,mul,div,constant,variable",
+    "population_size": 200,
+    "pool_size": 200,
+    "generations": 30,
+    "female_selector": "tournament",
+    "male_selector": "tournament",
+    "tournament_size": 3,
+    "optimizer_iterations": 10,
+    "optimizer": "lm",
+    "epsilon": 1e-05,
+    "max_evaluations": 100000,
+    "max_length": 20,
+    "model_selection_criterion": "minimum_description_length",
+    "mutation_probability": 0.15,
+    "objectives": ["r2", "length"],
+    "random_state": None,
+    "uncertainty": [0.05],
+    "n_threads": 0,
+}
+
+# Keys the client is allowed to override
+_CLIENT_KEYS = {
+    "allowed_symbols", "population_size", "pool_size", "generations",
+    "tournament_size", "optimizer_iterations", "optimizer", "epsilon",
+    "max_evaluations", "max_length", "model_selection_criterion",
+    "mutation_probability", "random_state", "uncertainty", "n_threads",
+}
+
+
+def _run_regression(points_json: str, params_json: str, result_queue: mp.Queue):
     """Run symbolic regression in a child process (CPU-bound, killable)."""
     # Ignore SIGINT in worker so only the parent handles it
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -64,27 +96,15 @@ def _run_regression(points_json: str, result_queue: mp.Queue):
             result_queue.put({"type": "error", "message": "Need more points"})
             return
 
-        # --- fast symbolic regression params --------------------------------
-        params = {
-            "allowed_symbols": "add,sub,mul,div,constant,variable",
-            "population_size": 200,
-            "pool_size": 200,
-            "generations": 30,
-            "female_selector": "tournament",
-            "male_selector": "tournament",
-            "tournament_size": 3,
-            "optimizer_iterations": 10,
-            "optimizer": "lm",
-            "epsilon": 1e-05,
-            "max_evaluations": 100000,
-            "max_length": 20,
-            "model_selection_criterion": "minimum_description_length",
-            "mutation_probability": 0.15,
-            "objectives": ["r2", "length"],
-            "random_state": None,
-            "uncertainty": [0.05],
-            "n_threads": 0,
-        }
+        # --- merge client params over defaults ------------------------------
+        params = dict(DEFAULT_PARAMS)
+        client_params = json.loads(params_json) if params_json else {}
+        for k, v in client_params.items():
+            if k in _CLIENT_KEYS:
+                params[k] = v
+        # Wrap uncertainty scalar into list if needed
+        if isinstance(params["uncertainty"], (int, float)):
+            params["uncertainty"] = [params["uncertainty"]]
 
         reg = SymbolicRegressor(**params)
         reg.fit(X, y)
@@ -230,10 +250,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
     process: mp.Process | None = None
     result_queue: mp.Queue | None = None
+    paused: bool = False
+    last_points: str | None = None   # JSON string of points for resume
+    last_params: str | None = None   # JSON string of params for resume
 
     def _kill_process():
-        nonlocal process, result_queue
+        nonlocal process, result_queue, paused
         if process is not None and process.is_alive():
+            # If paused (SIGSTOP), resume first so terminate can be delivered
+            if paused:
+                try:
+                    os.kill(process.pid, signal.SIGCONT)
+                except OSError:
+                    pass
             process.terminate()
             process.join(timeout=2)
             if process.is_alive():
@@ -241,11 +270,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 process.join(timeout=1)
         process = None
         result_queue = None
+        paused = False
+
+    def _start_regression(points_json: str, params_json: str):
+        nonlocal process, result_queue, last_points, last_params, paused
+        _kill_process()
+        last_points = points_json
+        last_params = params_json
+        result_queue = mp.Queue()
+        process = mp.Process(
+            target=_run_regression,
+            args=(points_json, params_json, result_queue),
+            daemon=True,
+        )
+        process.start()
+        paused = False
 
     try:
         while True:
-            # Check for incoming messages (with a short timeout so we can
-            # also poll the result queue)
             try:
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
                 msg = json.loads(raw)
@@ -255,28 +297,48 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
 
             if msg is not None:
-                if msg["type"] == "cancel":
+                mtype = msg["type"]
+
+                if mtype == "cancel":
                     _kill_process()
 
-                elif msg["type"] == "fit":
-                    # Cancel any running regression
-                    _kill_process()
-
+                elif mtype == "fit":
                     points = msg["points"]
-                    result_queue = mp.Queue()
-                    process = mp.Process(
-                        target=_run_regression,
-                        args=(json.dumps(points), result_queue),
-                        daemon=True,
+                    params = msg.get("params")
+                    _start_regression(
+                        json.dumps(points),
+                        json.dumps(params) if params else "{}",
                     )
-                    process.start()
+
+                elif mtype == "pause":
+                    if process is not None and process.is_alive() and not paused:
+                        os.kill(process.pid, signal.SIGSTOP)
+                        paused = True
+                        await websocket.send_text(json.dumps({"type": "paused"}))
+
+                elif mtype == "resume":
+                    if process is not None and process.is_alive() and paused:
+                        new_params = json.dumps(msg.get("params")) if msg.get("params") else "{}"
+                        if new_params == last_params:
+                            # Same params: just SIGCONT the frozen process
+                            os.kill(process.pid, signal.SIGCONT)
+                            paused = False
+                            await websocket.send_text(json.dumps({"type": "resumed"}))
+                        else:
+                            # Params changed: restart with stored points
+                            if last_points is not None:
+                                _start_regression(last_points, new_params)
+                                await websocket.send_text(json.dumps({"type": "resumed"}))
+
+                elif mtype == "stop":
+                    _kill_process()
+                    await websocket.send_text(json.dumps({"type": "stopped"}))
 
             # Poll result queue
-            if result_queue is not None:
+            if result_queue is not None and not paused:
                 try:
                     result = result_queue.get_nowait()
                     await websocket.send_text(json.dumps(result))
-                    # Clean up finished process
                     if process is not None:
                         process.join(timeout=1)
                     process = None
