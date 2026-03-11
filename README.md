@@ -12,7 +12,7 @@ A great *Thank You* to my dear friends and colleagues:
 - **Lukas Kammerer** ([@LukasCamera](https://github.com/LukasCamera)) — for the original C# implementation and concept this app is based on
 - **Bogdan Burlacu** ([@foolnotion](https://github.com/foolnotion)) — for the [PyOperon](https://github.com/heal-research/pyoperon) symbolic regression library
 
-and to:
+And credits to:
 - **Claude Opus** — for code generation
 
 ## Usage
