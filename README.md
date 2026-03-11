@@ -6,6 +6,14 @@ Interactive symbolic regression demo — draw a curve and get a fitted mathemati
 
 ![Demo](documentation/demo.gif)
 
+
+## Credits
+A great *Thank You* to my dear friends and colleagues:
+- **Lukas Kammerer** ([@LukasCamera](https://github.com/LukasCamera)) — for the original C# implementation and concept this app is based on
+- **Bogdan Burlacu** ([@foolnotion](https://github.com/foolnotion)) — for the [PyOperon](https://github.com/heal-research/pyoperon) symbolic regression library
+and to:
+- **Claude Opus** — for code generation
+
 ## Usage
 
 ```bash
@@ -40,9 +48,3 @@ Click the link in the terminal to open `http://localhost:8765`:
 Draw any curve on the canvas. PyOperon fits a symbolic expression in the background. Select solutions from the Pareto front panel. Redrawing cancels any in-progress run.
 
 ![Application screenshot](documentation/application.png)
-
-## Credits
-
-- **Lukas Kammerer** ([@LukasCamera](https://github.com/LukasCamera)) — original C# implementation and concept this app is based on
-- **Bogdan Burlacu** ([@foolnotion](https://github.com/foolnotion)) — [PyOperon](https://github.com/heal-research/pyoperon) symbolic regression library
-- **Claude Opus** — code generation
